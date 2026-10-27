@@ -1,6 +1,5 @@
 name: Bug report
 description: Something in Claims Audit does not work as expected
-labels: [bug]
 body:
   - type: markdown
     attributes:
