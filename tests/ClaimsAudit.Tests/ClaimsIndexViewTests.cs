@@ -33,6 +33,21 @@ namespace ClaimsAudit.Tests
         }
 
         [Test]
+        public void Sort_indicators_use_plain_text_glyphs_not_emoji_arrows()
+        {
+            var view = ReadIndexView();
+
+            Assert.That(view, Does.Not.Contain("↑"),
+                "Up arrow U+2191 has an emoji presentation and renders inconsistently; use a plain text glyph.");
+            Assert.That(view, Does.Not.Contain("↓"),
+                "Down arrow U+2193 has an emoji presentation and renders inconsistently; use a plain text glyph.");
+            Assert.That(view, Does.Contain("▲"),
+                "Ascending sort should be indicated by the solid up triangle U+25B2.");
+            Assert.That(view, Does.Contain("▼"),
+                "Descending sort should be indicated by the solid down triangle U+25BC.");
+        }
+
+        [Test]
         public void Reset_control_is_a_button_not_a_link()
         {
             var view = ReadIndexView();
