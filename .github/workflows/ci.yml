@@ -1,9 +1,8 @@
 name: CI
 
+# Gates pull requests. main itself is rebuilt and tested by deploy.yml after every merge.
 on:
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
   workflow_dispatch:
     inputs:
