@@ -34,6 +34,15 @@ namespace ClaimsAudit.Tests
         }
 
         [Test]
+        public void Flagged_percent_is_share_of_flagged_claims_rounded_down()
+        {
+            var stats = DashboardService.GetStats(ClaimRepository.All(), Today);
+
+            // 6 of 14 flagged = 42.85..% -> 42
+            Assert.That(stats.FlaggedPercent, Is.EqualTo(42));
+        }
+
+        [Test]
         public void Empty_list_gives_zero_stats()
         {
             var stats = DashboardService.GetStats(new System.Collections.Generic.List<ClaimsAudit.Web.Models.Claim>(), Today);
