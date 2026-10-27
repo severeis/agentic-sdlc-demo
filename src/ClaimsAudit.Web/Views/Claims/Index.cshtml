@@ -2,6 +2,21 @@
 @{
     ViewBag.Title = "Claims";
     var flags = (Dictionary<int, List<AuditFlag>>)ViewBag.Flags;
+    var sort = (string)ViewBag.Sort;
+    var dir = (string)ViewBag.Dir;
+    var from = (string)ViewBag.From;
+    var to = (string)ViewBag.To;
+}
+
+@helper SortHeader(string key, string label, string sort, string dir, string from, string to)
+{
+    var nextDir = (sort == key && dir == "asc") ? "desc" : "asc";
+    var arrow = "";
+    if (sort == key)
+    {
+        arrow = dir == "asc" ? " ↑" : " ↓";
+    }
+    @Html.ActionLink(label, "Index", new { from = from, to = to, sort = key, dir = nextDir })<text>@arrow</text>
 }
 
 <h2>Claims</h2>
@@ -20,14 +35,14 @@
 <table class="grid" id="claims-table">
     <thead>
         <tr>
-            <th>Id</th>
-            <th>Date</th>
-            <th>Patient</th>
-            <th>Provider</th>
-            <th>CPT</th>
-            <th>Units</th>
-            <th>Billed</th>
-            <th>Status</th>
+            <th>@SortHeader("id", "Id", sort, dir, from, to)</th>
+            <th>@SortHeader("date", "Date", sort, dir, from, to)</th>
+            <th>@SortHeader("patient", "Patient", sort, dir, from, to)</th>
+            <th>@SortHeader("provider", "Provider", sort, dir, from, to)</th>
+            <th>@SortHeader("cpt", "CPT", sort, dir, from, to)</th>
+            <th>@SortHeader("units", "Units", sort, dir, from, to)</th>
+            <th>@SortHeader("billed", "Billed", sort, dir, from, to)</th>
+            <th>@SortHeader("status", "Status", sort, dir, from, to)</th>
             <th>Flags</th>
         </tr>
     </thead>

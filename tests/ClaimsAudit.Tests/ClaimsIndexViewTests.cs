@@ -22,6 +22,17 @@ namespace ClaimsAudit.Tests
         }
 
         [Test]
+        public void Column_headers_are_sortable()
+        {
+            var view = ReadIndexView();
+
+            Assert.That(view, Does.Not.Contain("<th>Id</th>"),
+                "Column headers should be sortable links, not plain text.");
+            Assert.That(view, Does.Contain("SortHeader"),
+                "Index view should render sortable column headers.");
+        }
+
+        [Test]
         public void Reset_control_is_a_button_not_a_link()
         {
             var view = ReadIndexView();

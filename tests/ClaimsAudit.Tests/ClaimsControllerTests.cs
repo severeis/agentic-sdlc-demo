@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Web.Mvc;
 using ClaimsAudit.Web.Controllers;
 using ClaimsAudit.Web.Models;
@@ -30,7 +31,7 @@ namespace ClaimsAudit.Tests
         [Test]
         public void Index_without_filters_lists_all_claims()
         {
-            var result = (ViewResult)new ClaimsController().Index(null, null);
+            var result = (ViewResult)new ClaimsController().Index(null, null, null, null);
 
             Assert.That(((List<Claim>)result.Model).Count, Is.EqualTo(14));
         }
@@ -38,9 +39,48 @@ namespace ClaimsAudit.Tests
         [Test]
         public void Index_ignores_unparseable_dates()
         {
-            var result = (ViewResult)new ClaimsController().Index("not-a-date", "31/12/2026");
+            var result = (ViewResult)new ClaimsController().Index("not-a-date", "31/12/2026", null, null);
 
             Assert.That(((List<Claim>)result.Model).Count, Is.EqualTo(14));
+        }
+
+        [Test]
+        public void Index_sorts_by_billed_amount_ascending()
+        {
+            var result = (ViewResult)new ClaimsController().Index(null, null, "billed", "asc");
+
+            var model = (List<Claim>)result.Model;
+            var amounts = model.Select(c => c.BilledAmount).ToList();
+            Assert.That(amounts, Is.Ordered.Ascending);
+            Assert.That(model.Count, Is.EqualTo(14));
+        }
+
+        [Test]
+        public void Index_sorts_by_billed_amount_descending()
+        {
+            var result = (ViewResult)new ClaimsController().Index(null, null, "billed", "desc");
+
+            var amounts = ((List<Claim>)result.Model).Select(c => c.BilledAmount).ToList();
+            Assert.That(amounts, Is.Ordered.Descending);
+        }
+
+        [Test]
+        public void Index_sorts_by_provider_name_ascending()
+        {
+            var result = (ViewResult)new ClaimsController().Index(null, null, "provider", "asc");
+
+            var names = ((List<Claim>)result.Model).Select(c => c.ProviderName).ToList();
+            Assert.That(names, Is.Ordered.Ascending);
+        }
+
+        [Test]
+        public void Index_unknown_sort_key_keeps_default_order()
+        {
+            var result = (ViewResult)new ClaimsController().Index(null, null, "bogus", "asc");
+
+            var model = (List<Claim>)result.Model;
+            var expected = ClaimRepository.All();
+            Assert.That(model.Select(c => c.Id), Is.EqualTo(expected.Select(c => c.Id)));
         }
 
         [Test]
