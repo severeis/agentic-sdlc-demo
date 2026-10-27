@@ -1,9 +1,10 @@
 name: CI
 
-# Gates pull requests. main itself is rebuilt and tested by deploy.yml after every merge.
+# Gates pull requests: reports ci/build-and-test on the branch head. main itself is rebuilt and
+# tested by deploy.yml after every merge.
+# Started by the agent pipeline for agent branches. For a PR opened by a person, use
+# Actions -> CI -> Run workflow with the PR's branch.
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
@@ -17,13 +18,11 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ci-${{ inputs.ref || github.head_ref || github.ref }}
+  group: ci-${{ inputs.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-test:
-    # Agent branches are built via workflow_dispatch; skip the duplicate pull_request run.
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'agent/')
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -33,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.ref }}
 
       - name: Mark pending
         id: sha
@@ -78,7 +77,7 @@ jobs:
         shell: bash
         env:
           OUTCOME: ${{ job.status }}
-          BRANCH: ${{ inputs.ref || github.head_ref || github.ref_name }}
+          BRANCH: ${{ inputs.ref }}
         run: |
           if [ "$OUTCOME" = "success" ]; then
             state=success; desc="Build, tests and smoke test passed"

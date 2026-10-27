@@ -2,11 +2,10 @@ name: AI Review
 
 # Second agent: reviews the PR diff and reports ci/ai-review. A blocking review on an
 # agent PR sends it back to the agent for another attempt.
+# Started by CI when an agent branch goes green. For a PR opened by a person, use
+# Actions -> AI Review -> Run workflow with the PR number.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
   workflow_dispatch:
     inputs:
       pr:
@@ -20,19 +19,17 @@ permissions:
   actions: write
 
 concurrency:
-  group: review-${{ inputs.pr || github.event.pull_request.number }}
+  group: review-${{ inputs.pr }}
   cancel-in-progress: true
 
 jobs:
   ai-review:
-    # Agent PRs are reviewed via workflow_dispatch after CI; skip the duplicate pull_request run.
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'agent/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
       STATUS_CONTEXT: ci/ai-review
-      PR: ${{ inputs.pr || github.event.pull_request.number }}
+      PR: ${{ inputs.pr }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     defaults:
       run:

@@ -41,7 +41,7 @@ The app runs at **http://213.155.29.61**.
 - **Bounded autonomy.** Turn limits, a retry cap and a diff limit keep cost and blast radius small. Anything unusual goes to a person with an explanation.
 - **Right-sized.** The legacy app gets characterization tests and a smoke test, which is enough of a safety net to automate maintenance, not a rewrite.
 
-One GitHub-specific detail: PRs opened with `GITHUB_TOKEN` do not trigger other workflows, so each stage starts the next one explicitly (`gh workflow run`) and reports a commit status that the branch rule requires.
+One GitHub-specific detail: PRs opened with `GITHUB_TOKEN` do not trigger other workflows, so each stage starts the next one explicitly (`gh workflow run`) and reports a commit status that the branch rule requires. CI and AI Review are therefore dispatch-only; for a PR opened by a person, run them from the Actions tab with the branch name and the PR number.
 
 ## Setup
 
