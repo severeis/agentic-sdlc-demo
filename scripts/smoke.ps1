@@ -1,20 +1,28 @@
-# Starts the site in IIS Express and checks that the main pages respond.
-# Usage: scripts\smoke.ps1 -SitePath publish
+# Checks that the main pages respond.
+# Usage: scripts\smoke.ps1 -SitePath publish      (starts the site in IIS Express)
+#        scripts\smoke.ps1 -BaseUrl http://localhost (checks a site that is already running, e.g. in IIS)
 param(
     [string]$SitePath = "src\ClaimsAudit.Web",
-    [int]$Port = 8085
+    [int]$Port = 8085,
+    [string]$BaseUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $PSScriptRoot
-if (-not [System.IO.Path]::IsPathRooted($SitePath)) { $SitePath = Join-Path $root $SitePath }
+$proc = $null
 
-$iis = @("$env:ProgramFiles\IIS Express\iisexpress.exe", "${env:ProgramFiles(x86)}\IIS Express\iisexpress.exe") |
-    Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $iis) { throw "IIS Express not found" }
+if ($BaseUrl) {
+    $base = $BaseUrl.TrimEnd('/')
+} else {
+    $root = Split-Path -Parent $PSScriptRoot
+    if (-not [System.IO.Path]::IsPathRooted($SitePath)) { $SitePath = Join-Path $root $SitePath }
 
-$proc = Start-Process -FilePath $iis -ArgumentList "/path:`"$SitePath`"", "/port:$Port", "/systray:false" -PassThru -WindowStyle Hidden
-$base = "http://localhost:$Port"
+    $iis = @("$env:ProgramFiles\IIS Express\iisexpress.exe", "${env:ProgramFiles(x86)}\IIS Express\iisexpress.exe") |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $iis) { throw "IIS Express not found" }
+
+    $proc = Start-Process -FilePath $iis -ArgumentList "/path:`"$SitePath`"", "/port:$Port", "/systray:false" -PassThru -WindowStyle Hidden
+    $base = "http://localhost:$Port"
+}
 
 $checks = @(
     @{ Url = "/";                          Expect = "Audit dashboard" },
@@ -47,7 +55,7 @@ try {
         }
     }
 } finally {
-    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    if ($proc) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
 }
 
 if ($failed -gt 0) { exit 1 }

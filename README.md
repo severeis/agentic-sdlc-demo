@@ -19,7 +19,7 @@ flowchart LR
     F -->|max 2 attempts| CI
     F -->|still failing| H
     R -->|approve| HA[Human approval<br/>branch rule]
-    HA -->|merge| D[Deploy: test, publish,<br/>smoke test, release]
+    HA -->|merge| D[Deploy: test, publish,<br/>IIS + smoke test, rollback,<br/>release]
     D --> I[Comment on the issue]
 ```
 
@@ -30,7 +30,9 @@ flowchart LR
 5. **AI review** ([ai-review.yml](.github/workflows/ai-review.yml)): a second agent reviews the diff for correctness, test quality and scope, posts the review on the PR and sets `ci/ai-review`. Its instructions are always read from `main`, so a PR cannot rewrite its own review rules.
 6. **Retry loop.** A red CI run or a blocking review sends the PR back to the agent with the log or the review. After two failed attempts the PR is labelled `needs-human`.
 7. **Human approval.** A branch rule on `main` requires both statuses and one approving review. The agent's PRs are authored by `github-actions[bot]`, so the maintainer can approve them.
-8. **Deploy** ([deploy.yml](.github/workflows/deploy.yml)): after the merge, test again, publish, smoke-test the published build, create a GitHub release, and comment on the original issue. A failed deploy opens a `needs-human` issue.
+8. **Deploy** ([deploy.yml](.github/workflows/deploy.yml)): after the merge, a GitHub runner tests again, publishes and smoke-tests the published build. A self-hosted runner on the Windows server backs up the live site, deploys to IIS behind `app_offline.htm`, smoke-tests it in place and restores the previous version if that fails. Then the release is created and the original issue gets a comment with the link. A failed deploy opens a `needs-human` issue.
+
+The app runs at **http://213.155.29.61**.
 
 ## Why it is built this way
 
@@ -46,7 +48,9 @@ One GitHub-specific detail: PRs opened with `GITHUB_TOKEN` do not trigger other 
 1. Add the repository secret `ANTHROPIC_API_KEY` (Settings → Secrets and variables → Actions).
 2. Settings → Actions → General → Workflow permissions: **Read and write**, and tick **Allow GitHub Actions to create and approve pull requests**.
 3. Add a ruleset for `main`: require a pull request with 1 approval, and require the status checks `ci/build-and-test` and `ci/ai-review`.
-4. File a bug with the issue form and add the `agent` label.
+4. On the Windows server: enable IIS with ASP.NET 4.8, create the `ClaimsAudit` site on `C:\inetpub\claimsaudit`, and register a self-hosted runner for this repository with the label `claimsaudit-prod`, running as a service.
+5. Settings → Actions → General → fork pull request workflows: **Require approval for all external contributors**, so code from outside the repo never reaches the self-hosted runner without a review.
+6. File a bug with the issue form and add the `agent` label.
 
 Running locally (Windows, Visual Studio 2022+ with the ASP.NET workload):
 
@@ -65,13 +69,14 @@ pwsh -File scripts/smoke.ps1
 | Commit status `ci/ai-review` | Status check policy fed by the PR Status API |
 | Ruleset: 1 approval | Minimum number of reviewers policy |
 | `gh workflow run` hand-offs | Pipeline completion triggers / REST queue calls |
-| GitHub release + smoke test | Multi-stage YAML: deploy to an App Service staging slot, smoke test, swap |
+| Self-hosted runner deploys to IIS, smoke test, rollback | Deployment group / environment agent on the IIS box, or an App Service staging slot with smoke test and swap |
 | `ANTHROPIC_API_KEY` secret | Variable group linked to Key Vault |
 
 The agent prompts, guardrails and test scripts carry over unchanged. Only the YAML and the triggers differ.
 
 ## Limits
 
-- "Production" is a GitHub release plus a smoke test of the published build in IIS Express. A real setup would deploy to IIS or App Service and run the smoke test there before switching traffic.
+- "Production" is a single IIS server with a short `app_offline.htm` window during the copy. A setup with real users would deploy to a staging slot or a second server and switch traffic only after the smoke test.
+- The self-hosted runner only runs the deploy job, which is triggered by pushes to `main`; everything that builds untrusted code runs on GitHub's runners.
 - The AI reviewer is a gate, not a replacement for the human approval.
 - The app keeps its data in memory; it exists to give the agents realistic legacy code to work on.
