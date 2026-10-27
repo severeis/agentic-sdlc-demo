@@ -14,7 +14,7 @@
     var arrow = "";
     if (sort == key)
     {
-        arrow = dir == "asc" ? " ↑" : " ↓";
+        arrow = dir == "asc" ? " ▲" : " ▼";
     }
     @Html.ActionLink(label, "Index", new { from = from, to = to, sort = key, dir = nextDir })<text>@arrow</text>
 }
