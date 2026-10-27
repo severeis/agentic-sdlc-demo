@@ -1,11 +1,12 @@
 name: Agent
 
 # Issue labelled "agent" -> Claude Code fixes it -> PR.
+# Reopening an issue that has the "agent" label starts a second pass with the previous PRs and comments.
 # Also dispatched by CI / AI review when an agent PR needs another attempt.
 
 on:
   issues:
-    types: [labeled]
+    types: [labeled, reopened]
   workflow_dispatch:
     inputs:
       pr:
@@ -30,7 +31,10 @@ concurrency:
 
 jobs:
   agent:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'agent'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'agent') ||
+      (github.event.action == 'reopened' && contains(github.event.issue.labels.*.name, 'agent'))
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -45,15 +49,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check who added the label
+      - name: Check who started it
         if: github.event_name == 'issues'
         env:
           SENDER: ${{ github.event.sender.login }}
+          ACTION: ${{ github.event.action }}
         run: |
           perm=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$SENDER/permission" -q .permission || echo none)
           case "$perm" in
-            admin|maintain|write|triage) echo "Label added by $SENDER ($perm)" ;;
-            *) echo "Label added by $SENDER without repo access, ignoring"; exit 1 ;;
+            admin|maintain|write|triage) echo "Issue $ACTION by $SENDER ($perm)" ;;
+            *) echo "Issue $ACTION by $SENDER without repo access, ignoring"; exit 1 ;;
           esac
 
       - name: Prepare task
@@ -79,7 +84,22 @@ jobs:
             issue=$ISSUE_FROM_EVENT
             branch="agent/issue-$issue"
             cp .github/agent/implement.md agent-out/prompt.md
-            gh issue comment "$issue" --body "🤖 Agent picked this up: $RUN_URL"
+
+            # An earlier agent PR for this issue was merged, yet the issue is back (reopened or
+            # labelled again): second pass, with what was tried before and what people said about it.
+            gh pr list --state merged --head "$branch" --json number,title,url \
+              -q '.[] | "\(.number)\t\(.title)\t\(.url)"' > agent-out/previous-prs.tsv
+            if [ -s agent-out/previous-prs.tsv ]; then
+              cat .github/agent/reopen.md >> agent-out/prompt.md
+              echo >> agent-out/prompt.md
+              while IFS=$'\t' read -r n t u; do
+                gh pr diff "$n" > "agent-out/previous-pr-$n.diff"
+                echo "- PR #$n \"$t\" ($u), merged and deployed. Diff: agent-out/previous-pr-$n.diff" >> agent-out/prompt.md
+              done < agent-out/previous-prs.tsv
+              gh issue comment "$issue" --body "🤖 The previous fix did not solve this; the agent is taking another look: $RUN_URL"
+            else
+              gh issue comment "$issue" --body "🤖 Agent picked this up: $RUN_URL"
+            fi
           else
             mode=fix
             branch=$(gh pr view "$PR_NUMBER" --json headRefName -q .headRefName)
@@ -114,6 +134,12 @@ jobs:
           {
             echo; echo "## Issue #$issue"; echo
             gh issue view "$issue" --json title,body -q '"### " + .title + "\n\n" + .body'
+            # Comments from people (the pipeline's own status comments are left out)
+            comments=$(gh issue view "$issue" --json comments \
+              -q '.comments[] | select(.author.login | test("github-actions") | not) | "**\(.author.login)** (\(.createdAt)):\n\(.body)\n"')
+            if [ -n "$comments" ]; then
+              echo; echo "### Comments on the issue"; echo; echo "$comments"
+            fi
           } >> agent-out/prompt.md
 
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
@@ -141,7 +167,7 @@ jobs:
           claude -p \
             --output-format json \
             --max-turns 60 \
-            --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "Bash(pwsh -File scripts/test.ps1:*)" "Bash(git diff:*)" "Bash(git status:*)" \
+            --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "Bash(pwsh -File scripts/test.ps1:*)" "Bash(git diff:*)" "Bash(git status:*)" "Bash(git log:*)" "Bash(git show:*)" \
             < agent-out/prompt.md > agent-out/result.json
 
       - name: Read agent result

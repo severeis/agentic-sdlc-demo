@@ -14,6 +14,10 @@ Restores packages, builds `ClaimsAudit.sln` in Release with MSBuild and runs the
 
 `scripts/smoke.ps1` starts the site in IIS Express and checks the main pages. CI runs it; you do not need to.
 
+## Production
+
+The app runs in IIS 10 on a Windows server with the Russian system locale (ru-RU, ANSI code page 1251), .NET Framework 4.8, at http://213.155.29.61. CI and your build run on GitHub's Windows runners with an English locale (code page 1252), so anything that depends on the server's culture or default file encoding can pass in CI and still break in production.
+
 ## Layout
 
 - `src/ClaimsAudit.Web/` - the web app (old-style csproj)
