@@ -6,7 +6,7 @@ namespace ClaimsAudit.Tests
     [TestFixture]
     public class ClaimsIndexViewTests
     {
-        private static string ReadIndexView()
+        private static string IndexViewPath()
         {
             var dir = new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
             while (dir != null)
@@ -14,11 +14,16 @@ namespace ClaimsAudit.Tests
                 var candidate = Path.Combine(dir.FullName, "src", "ClaimsAudit.Web", "Views", "Claims", "Index.cshtml");
                 if (File.Exists(candidate))
                 {
-                    return File.ReadAllText(candidate);
+                    return candidate;
                 }
                 dir = dir.Parent;
             }
             throw new FileNotFoundException("Could not locate Claims/Index.cshtml");
+        }
+
+        private static string ReadIndexView()
+        {
+            return File.ReadAllText(IndexViewPath());
         }
 
         [Test]
@@ -33,18 +38,26 @@ namespace ClaimsAudit.Tests
         }
 
         [Test]
-        public void Sort_indicators_use_plain_text_glyphs_not_emoji_arrows()
+        public void Sort_indicators_are_pure_ascii_so_they_survive_the_server_code_page()
         {
-            var view = ReadIndexView();
+            // The view is a Razor file with no BOM. The runtime reads such files using the
+            // server's default ANSI code page (CP1251 in production), not UTF-8. Any non-ASCII
+            // glyph (↑ ↓ ▲ ▼) is therefore mis-decoded into Cyrillic mojibake on the server even
+            // though it looks correct on the CP1252 build machine. Keep the arrow markup ASCII-only
+            // (HTML numeric character references) so it renders identically regardless of code page.
+            var bytes = File.ReadAllBytes(IndexViewPath());
+            foreach (var b in bytes)
+            {
+                Assert.That(b, Is.LessThan(0x80),
+                    "Index.cshtml must be pure ASCII: a byte >= 0x80 depends on the file encoding and " +
+                    "is mis-decoded under the server's CP1251 code page.");
+            }
 
-            Assert.That(view, Does.Not.Contain("↑"),
-                "Up arrow U+2191 has an emoji presentation and renders inconsistently; use a plain text glyph.");
-            Assert.That(view, Does.Not.Contain("↓"),
-                "Down arrow U+2193 has an emoji presentation and renders inconsistently; use a plain text glyph.");
-            Assert.That(view, Does.Contain("▲"),
-                "Ascending sort should be indicated by the solid up triangle U+25B2.");
-            Assert.That(view, Does.Contain("▼"),
-                "Descending sort should be indicated by the solid down triangle U+25BC.");
+            var view = ReadIndexView();
+            Assert.That(view, Does.Contain("&#9650;"),
+                "Ascending sort should be the up triangle as an ASCII numeric entity (&#9650; = U+25B2).");
+            Assert.That(view, Does.Contain("&#9660;"),
+                "Descending sort should be the down triangle as an ASCII numeric entity (&#9660; = U+25BC).");
         }
 
         [Test]
