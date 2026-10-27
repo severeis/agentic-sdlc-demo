@@ -10,8 +10,8 @@ namespace ClaimsAudit.Web.Controllers
 {
     public class ClaimsController : Controller
     {
-        // GET /Claims?from=2026-09-01&to=2026-09-30
-        public ActionResult Index(string from, string to)
+        // GET /Claims?from=2026-09-01&to=2026-09-30&sort=billed&dir=asc
+        public ActionResult Index(string from, string to, string sort, string dir)
         {
             DateTime? fromDate = ParseDate(from);
             DateTime? toDate = ParseDate(to);
@@ -19,6 +19,8 @@ namespace ClaimsAudit.Web.Controllers
             var claims = (fromDate.HasValue || toDate.HasValue)
                 ? ClaimRepository.FilterByDate(fromDate, toDate)
                 : ClaimRepository.All();
+
+            claims = SortClaims(claims, sort, dir);
 
             var today = Clock.Today();
             var flags = new Dictionary<int, List<AuditFlag>>();
@@ -28,7 +30,33 @@ namespace ClaimsAudit.Web.Controllers
             ViewBag.Flags = flags;
             ViewBag.From = from;
             ViewBag.To = to;
+            ViewBag.Sort = sort;
+            ViewBag.Dir = dir;
             return View(claims);
+        }
+
+        // Sorts the grid by the requested column. An unknown or empty sort key
+        // leaves the repository's default order untouched.
+        private static List<Claim> SortClaims(List<Claim> claims, string sort, string dir)
+        {
+            if (string.IsNullOrEmpty(sort))
+                return claims;
+
+            bool desc = dir == "desc";
+            IEnumerable<Claim> sorted;
+            switch (sort)
+            {
+                case "id": sorted = desc ? claims.OrderByDescending(c => c.Id) : claims.OrderBy(c => c.Id); break;
+                case "date": sorted = desc ? claims.OrderByDescending(c => c.ServiceDate) : claims.OrderBy(c => c.ServiceDate); break;
+                case "patient": sorted = desc ? claims.OrderByDescending(c => c.PatientId) : claims.OrderBy(c => c.PatientId); break;
+                case "provider": sorted = desc ? claims.OrderByDescending(c => c.ProviderName) : claims.OrderBy(c => c.ProviderName); break;
+                case "cpt": sorted = desc ? claims.OrderByDescending(c => c.CptCode) : claims.OrderBy(c => c.CptCode); break;
+                case "units": sorted = desc ? claims.OrderByDescending(c => c.Units) : claims.OrderBy(c => c.Units); break;
+                case "billed": sorted = desc ? claims.OrderByDescending(c => c.BilledAmount) : claims.OrderBy(c => c.BilledAmount); break;
+                case "status": sorted = desc ? claims.OrderByDescending(c => c.Status) : claims.OrderBy(c => c.Status); break;
+                default: return claims;
+            }
+            return sorted.ToList();
         }
 
         public ActionResult Details(int id)
