@@ -23,7 +23,7 @@ namespace ClaimsAudit.Web.Services
             }
 
             if (stats.TotalClaims > 0)
-                stats.FlaggedPercent = stats.FlaggedClaims / stats.TotalClaims * 100;
+                stats.FlaggedPercent = stats.FlaggedClaims * 100 / stats.TotalClaims;
 
             return stats;
         }
