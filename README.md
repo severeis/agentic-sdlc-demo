@@ -19,6 +19,7 @@ flowchart LR
     F -->|max 2 attempts| CI
     F -->|still failing| H
     R -->|approve| HA[Human approval<br/>branch rule]
+    HA -->|/agent comment or<br/>Request changes| F
     HA -->|merge| D[Deploy: test, publish,<br/>IIS + smoke test, rollback,<br/>release]
     D --> I[Comment on the issue]
 ```
@@ -29,9 +30,10 @@ flowchart LR
 4. **CI** ([ci.yml](.github/workflows/ci.yml)): restore, MSBuild, NUnit, then the site is started in IIS Express and smoke-tested. Result: status `ci/build-and-test`.
 5. **AI review** ([ai-review.yml](.github/workflows/ai-review.yml)): a second agent reviews the diff for correctness, test quality and scope, posts the review on the PR and sets `ci/ai-review`. Its instructions are always read from `main`, so a PR cannot rewrite its own review rules.
 6. **Retry loop.** A red CI run or a blocking review sends the PR back to the agent with the log or the review. After two failed attempts the PR is labelled `needs-human`.
-7. **Fixed, deployed, still broken.** If someone reopens an issue with the `agent` label (or adds the label again) after an agent fix was merged, the agent gets a second pass with the previous PR diffs, the comments and the production environment from CLAUDE.md. It has to explain why the first fix did not work and add a test that fails for that reason before fixing again.
-8. **Human approval.** A branch rule on `main` requires both statuses and one approving review. The agent's PRs are authored by `github-actions[bot]`, so the maintainer can approve them.
-9. **Deploy** ([deploy.yml](.github/workflows/deploy.yml)): after the merge, a GitHub runner tests again, publishes and smoke-tests the published build. A self-hosted runner on the Windows server backs up the live site, deploys to IIS behind `app_offline.htm`, smoke-tests it in place and restores the previous version if that fails. Then the release is created and the original issue gets a comment with the link. A failed deploy opens a `needs-human` issue.
+7. **Change requests from people.** A maintainer can send an agent PR back in plain words: a PR comment starting with `/agent` (for example `/agent Reset should also clear the sorting`) or a review with **Request changes**, including comments on specific lines. The agent reacts with 👀, gets the request and the current diff, pushes a commit to the same branch, replies on the PR, and CI and AI review run again. Only people with write access can do this, each PR takes at most 5 such requests, and a request resets the automatic retry budget.
+8. **Fixed, deployed, still broken.** If someone reopens an issue with the `agent` label (or adds the label again) after an agent fix was merged, the agent gets a second pass with the previous PR diffs, the comments and the production environment from CLAUDE.md. It has to explain why the first fix did not work and add a test that fails for that reason before fixing again.
+9. **Human approval.** A branch rule on `main` requires both statuses and one approving review. The agent's PRs are authored by `github-actions[bot]`, so the maintainer can approve them.
+10. **Deploy** ([deploy.yml](.github/workflows/deploy.yml)): after the merge, a GitHub runner tests again, publishes and smoke-tests the published build. A self-hosted runner on the Windows server backs up the live site, deploys to IIS behind `app_offline.htm`, smoke-tests it in place and restores the previous version if that fails. Then the release is created and the original issue gets a comment with the link. A failed deploy opens a `needs-human` issue.
 
 The app runs at **http://213.155.29.61**.
 
@@ -69,6 +71,7 @@ pwsh -File scripts/smoke.ps1
 | Commit status `ci/build-and-test` | Build validation branch policy |
 | Commit status `ci/ai-review` | Status check policy fed by the PR Status API |
 | Ruleset: 1 approval | Minimum number of reviewers policy |
+| `/agent` PR comment, Request changes review | Service Hook on "PR commented on" / reviewer vote "Waiting for author" |
 | `gh workflow run` hand-offs | Pipeline completion triggers / REST queue calls |
 | Self-hosted runner deploys to IIS, smoke test, rollback | Deployment group / environment agent on the IIS box, or an App Service staging slot with smoke test and swap |
 | `ANTHROPIC_API_KEY` secret | Variable group linked to Key Vault |

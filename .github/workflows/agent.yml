@@ -3,10 +3,15 @@ name: Agent
 # Issue labelled "agent" -> Claude Code fixes it -> PR.
 # Reopening an issue that has the "agent" label starts a second pass with the previous PRs and comments.
 # Also dispatched by CI / AI review when an agent PR needs another attempt.
+# A person can send an agent PR back too: a PR comment starting with "/agent", or a review with "Request changes".
 
 on:
   issues:
     types: [labeled, reopened]
+  issue_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
   workflow_dispatch:
     inputs:
       pr:
@@ -26,20 +31,23 @@ permissions:
   actions: write
 
 concurrency:
-  group: agent-${{ github.event.issue.number || inputs.pr }}
+  group: agent-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
   cancel-in-progress: false
 
 jobs:
   agent:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'agent') ||
-      (github.event.action == 'reopened' && contains(github.event.issue.labels.*.name, 'agent'))
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'agent') ||
+      (github.event_name == 'issues' && github.event.action == 'reopened' && contains(github.event.issue.labels.*.name, 'agent')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/agent') && github.event.comment.user.type != 'Bot') ||
+      (github.event_name == 'pull_request_review' && github.event.review.state == 'changes_requested' && startsWith(github.event.pull_request.head.ref, 'agent/') && github.event.review.user.type != 'Bot')
     runs-on: windows-latest
     timeout-minutes: 45
     env:
       GH_TOKEN: ${{ github.token }}
       MAX_FIX_ATTEMPTS: 2
+      MAX_HUMAN_REQUESTS: 5
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     defaults:
       run:
@@ -50,24 +58,32 @@ jobs:
           fetch-depth: 0
 
       - name: Check who started it
-        if: github.event_name == 'issues'
+        if: github.event_name != 'workflow_dispatch'
         env:
           SENDER: ${{ github.event.sender.login }}
-          ACTION: ${{ github.event.action }}
+          ACTION: ${{ github.event_name }}/${{ github.event.action }}
         run: |
           perm=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$SENDER/permission" -q .permission || echo none)
           case "$perm" in
-            admin|maintain|write|triage) echo "Issue $ACTION by $SENDER ($perm)" ;;
-            *) echo "Issue $ACTION by $SENDER without repo access, ignoring"; exit 1 ;;
+            admin|maintain|write) echo "$ACTION by $SENDER ($perm)" ;;
+            triage) [ "$GITHUB_EVENT_NAME" = "issues" ] && echo "$ACTION by $SENDER ($perm)" || { echo "$ACTION by $SENDER ($perm): needs write access to change a PR, ignoring"; exit 1; } ;;
+            *) echo "$ACTION by $SENDER without repo access, ignoring"; exit 1 ;;
           esac
 
       - name: Prepare task
         id: task
         env:
           ISSUE_FROM_EVENT: ${{ github.event.issue.number }}
+          PR_FROM_EVENT: ${{ github.event.pull_request.number || github.event.issue.number }}
           PR_NUMBER: ${{ inputs.pr }}
           REASON: ${{ inputs.reason }}
           FAILED_RUN: ${{ inputs.run_id }}
+          # People's text goes through env, never straight into the script
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          REVIEW_BODY: ${{ github.event.review.body }}
+          REVIEW_ID: ${{ github.event.review.id }}
+          SENDER: ${{ github.event.sender.login }}
         run: |
           mkdir -p agent-out
           for l in "agent:5319e7:Hand this issue to the coding agent" \
@@ -102,17 +118,54 @@ jobs:
             fi
           else
             mode=fix
+            # A PR comment or review from a person: same fix mode, with their words as the reason
+            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+              PR_NUMBER=$PR_FROM_EVENT
+              REASON=human
+            fi
             branch=$(gh pr view "$PR_NUMBER" --json headRefName -q .headRefName)
+            state=$(gh pr view "$PR_NUMBER" --json state -q .state)
+            case "$branch" in
+              agent/issue-*) ;;
+              *) echo "PR #$PR_NUMBER ($branch) is not an agent PR, nothing to do"; echo "mode=stop" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            esac
+            if [ "$state" != "OPEN" ]; then
+              echo "PR #$PR_NUMBER is $state, nothing to do"; echo "mode=stop" >> "$GITHUB_OUTPUT"; exit 0
+            fi
             issue=${branch#agent/issue-}
-            labels=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name')
-            attempt=1
-            if echo "$labels" | grep -qx fix-attempt-1; then attempt=2; fi
-            if echo "$labels" | grep -qx fix-attempt-2; then attempt=3; fi
-            if [ "$attempt" -gt "$MAX_FIX_ATTEMPTS" ]; then
-              gh pr edit "$PR_NUMBER" --add-label needs-human
-              gh pr comment "$PR_NUMBER" --body "🤖 Still failing ($REASON) after $MAX_FIX_ATTEMPTS fix attempts. Handing over to a human."
-              echo "mode=giveup" >> "$GITHUB_OUTPUT"
-              exit 0
+            echo "pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+
+            if [ "$REASON" = "human" ]; then
+              # People get their own budget, counted by the agent's replies on the PR
+              done=$(gh pr view "$PR_NUMBER" --json comments \
+                -q '[.comments[] | select(.body | contains("<!-- agent-human-request -->"))] | length')
+              attempt=$((done + 1))
+              if [ "$attempt" -gt "$MAX_HUMAN_REQUESTS" ]; then
+                gh pr edit "$PR_NUMBER" --add-label needs-human
+                gh pr comment "$PR_NUMBER" --body "🤖 This PR has already had $MAX_HUMAN_REQUESTS change requests. Please finish it by hand or file a new issue."
+                echo "mode=stop" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              # A person's request also gives CI and the AI reviewer a fresh retry budget
+              for l in fix-attempt-1 fix-attempt-2 needs-human; do gh pr edit "$PR_NUMBER" --remove-label "$l" > /dev/null 2>&1 || true; done
+              if [ -n "$COMMENT_ID" ]; then
+                gh api -X POST "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content=eyes > /dev/null || true
+              fi
+              printf '🤖 Working on the change requested by %s (request %s of %s): %s\n\n<!-- agent-human-request -->\n' \
+                "$SENDER" "$attempt" "$MAX_HUMAN_REQUESTS" "$RUN_URL" > agent-out/ack.md
+              gh pr comment "$PR_NUMBER" --body-file agent-out/ack.md
+            else
+              labels=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name')
+              attempt=1
+              if echo "$labels" | grep -qx fix-attempt-1; then attempt=2; fi
+              if echo "$labels" | grep -qx fix-attempt-2; then attempt=3; fi
+              if [ "$attempt" -gt "$MAX_FIX_ATTEMPTS" ]; then
+                gh pr edit "$PR_NUMBER" --add-label needs-human
+                gh pr comment "$PR_NUMBER" --body "🤖 Still failing ($REASON) after $MAX_FIX_ATTEMPTS fix attempts. Handing over to a human."
+                echo "mode=stop" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
             fi
             echo "attempt=$attempt" >> "$GITHUB_OUTPUT"
             git checkout "$branch"
@@ -124,10 +177,23 @@ jobs:
                 echo; echo "## Why it came back: CI failed"; echo
                 echo '```'; tail -n 200 agent-out/ci/build.log 2>/dev/null || echo "(log not available)"; echo '```'
               } >> agent-out/prompt.md
-            else
+            elif [ "$REASON" = "review" ]; then
               gh pr view "$PR_NUMBER" --json comments \
                 -q '[.comments[] | select(.body | contains("<!-- ai-review -->"))] | last | .body' > agent-out/review.md
               { echo; echo "## Why it came back: the AI reviewer requested changes"; echo; cat agent-out/review.md; } >> agent-out/prompt.md
+            else
+              { echo; git show origin/main:.github/agent/human.md; } >> agent-out/prompt.md
+              {
+                echo; echo "## Why it came back: $SENDER (maintainer) asked for changes"; echo
+                if [ -n "$COMMENT_ID" ]; then
+                  printf '%s\n' "${COMMENT_BODY#/agent}"
+                else
+                  printf '%s\n' "$REVIEW_BODY"
+                  inline=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID/comments" \
+                    -q '.[] | "- `\(.path)` line \(.line // .original_line // "?"): \(.body)"')
+                  if [ -n "$inline" ]; then echo; echo "Comments on lines of the diff:"; echo "$inline"; fi
+                fi
+              } >> agent-out/prompt.md
             fi
           fi
 
@@ -148,15 +214,15 @@ jobs:
           echo "title=$(gh issue view "$issue" --json title -q .title)" >> "$GITHUB_OUTPUT"
 
       - uses: microsoft/setup-msbuild@v2
-        if: steps.task.outputs.mode != 'giveup'
+        if: steps.task.outputs.mode != 'stop'
 
       - uses: actions/setup-node@v5
-        if: steps.task.outputs.mode != 'giveup'
+        if: steps.task.outputs.mode != 'stop'
         with:
           node-version: 20
 
       - name: Run Claude Code
-        if: steps.task.outputs.mode != 'giveup'
+        if: steps.task.outputs.mode != 'stop'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_GIT_BASH_PATH: C:\Program Files\Git\bin\bash.exe
@@ -172,7 +238,7 @@ jobs:
 
       - name: Read agent result
         id: result
-        if: steps.task.outputs.mode != 'giveup'
+        if: steps.task.outputs.mode != 'stop'
         shell: pwsh
         run: |
           $r = Get-Content agent-out/result.json -Raw | ConvertFrom-Json
@@ -185,9 +251,9 @@ jobs:
           Write-Host "Outcome: $outcome, turns: $($r.num_turns), cost: $($r.total_cost_usd)"
 
       - name: Agent is blocked
-        if: steps.task.outputs.mode != 'giveup' && steps.result.outputs.outcome != 'fixed'
+        if: steps.task.outputs.mode != 'stop' && steps.result.outputs.outcome != 'fixed'
         env:
-          TARGET: ${{ steps.task.outputs.mode == 'fix' && inputs.pr || steps.task.outputs.issue }}
+          TARGET: ${{ steps.task.outputs.mode == 'fix' && steps.task.outputs.pr || steps.task.outputs.issue }}
         run: |
           { echo "🤖 **The agent stopped and needs a human.**"; echo; cat agent-out/summary.md; } > agent-out/comment.md
           gh issue comment "$TARGET" --body-file agent-out/comment.md
@@ -202,7 +268,7 @@ jobs:
       - name: Guardrails failed
         if: failure() && steps.guardrails.outcome == 'failure'
         env:
-          TARGET: ${{ steps.task.outputs.mode == 'fix' && inputs.pr || steps.task.outputs.issue }}
+          TARGET: ${{ steps.task.outputs.mode == 'fix' && steps.task.outputs.pr || steps.task.outputs.issue }}
         run: |
           { echo "🤖 **The agent's change was rejected by guardrails, nothing was pushed.**"; echo; echo '```'; cat agent-out/guardrails.txt; echo '```'; } > agent-out/comment.md
           gh issue comment "$TARGET" --body-file agent-out/comment.md
@@ -216,7 +282,7 @@ jobs:
           ISSUE: ${{ steps.task.outputs.issue }}
           TITLE: ${{ steps.task.outputs.title }}
           ATTEMPT: ${{ steps.task.outputs.attempt }}
-          REASON: ${{ inputs.reason }}
+          REASON: ${{ steps.task.outputs.reason }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -225,7 +291,8 @@ jobs:
             git commit -m "Fix #$ISSUE: $TITLE" -m "Generated by the coding agent: $RUN_URL"
             git push --force origin "$BRANCH"
           else
-            git commit -m "Address $REASON feedback (attempt $ATTEMPT) for #$ISSUE" -m "Generated by the coding agent: $RUN_URL"
+            if [ "$REASON" = "human" ]; then what="maintainer request $ATTEMPT"; else what="$REASON feedback (attempt $ATTEMPT)"; fi
+            git commit -m "Address $what for #$ISSUE" -m "Generated by the coding agent: $RUN_URL"
             git push origin "$BRANCH"
           fi
 
@@ -237,7 +304,8 @@ jobs:
           ISSUE: ${{ steps.task.outputs.issue }}
           TITLE: ${{ steps.task.outputs.title }}
           ATTEMPT: ${{ steps.task.outputs.attempt }}
-          PR_NUMBER: ${{ inputs.pr }}
+          PR_NUMBER: ${{ steps.task.outputs.pr }}
+          REASON: ${{ steps.task.outputs.reason }}
           COST: ${{ steps.result.outputs.cost }}
           TURNS: ${{ steps.result.outputs.turns }}
         run: |
@@ -262,8 +330,13 @@ jobs:
             gh issue comment "$ISSUE" --body "🤖 Opened PR #$pr. CI and AI review will run next; a human approves the merge."
           else
             pr=$PR_NUMBER
-            gh pr edit "$pr" --add-label "fix-attempt-$ATTEMPT"
-            { echo "🤖 **Fix attempt $ATTEMPT**"; echo; cat agent-out/summary.md; echo; echo "$footer"; } > agent-out/comment.md
+            if [ "$REASON" = "human" ]; then
+              heading="🤖 **Done: requested change $ATTEMPT**"
+            else
+              gh pr edit "$pr" --add-label "fix-attempt-$ATTEMPT"
+              heading="🤖 **Fix attempt $ATTEMPT**"
+            fi
+            { echo "$heading"; echo; cat agent-out/summary.md; echo; echo "$footer"; } > agent-out/comment.md
             gh pr comment "$pr" --body-file agent-out/comment.md
           fi
           gh workflow run ci.yml -f ref="$BRANCH"
