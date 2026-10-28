@@ -20,14 +20,14 @@ $(function () {
         $.each(rows, function (i, c) {
             var flags = $.map(c.Flags, function (f) { return '<span class="flag">' + f + '</span>'; }).join(' ');
             var tr = '<tr>' +
-                '<td><a href="/Claims/Details/' + c.Id + '">' + c.Id + '</a></td>' +
+                '<td><a class="claim-id" href="/Claims/Details/' + c.Id + '">' + c.Id + '</a></td>' +
                 '<td>' + c.ServiceDate + '</td>' +
                 '<td>' + c.PatientId + '</td>' +
                 '<td>' + c.ProviderName + '</td>' +
-                '<td>' + c.CptCode + '</td>' +
-                '<td>' + c.Units + '</td>' +
-                '<td>' + money(c.BilledAmount) + '</td>' +
-                '<td>' + c.Status + '</td>' +
+                '<td><span class="code">' + c.CptCode + '</span></td>' +
+                '<td class="num">' + c.Units + '</td>' +
+                '<td class="num">' + money(c.BilledAmount) + '</td>' +
+                '<td><span class="status status-' + String(c.Status).toLowerCase() + '">' + c.Status + '</span></td>' +
                 '<td>' + flags + '</td>' +
                 '</tr>';
             $tbody.append(tr);

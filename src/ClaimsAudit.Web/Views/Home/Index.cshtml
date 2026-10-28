@@ -3,27 +3,71 @@
     ViewBag.Title = "Dashboard";
 }
 
-<h2>Audit dashboard</h2>
+<section class="hero">
+    <div class="hero-text">
+        <div class="eyebrow">Billing compliance</div>
+        <h1>Audit dashboard</h1>
+        <p>Every claim is screened against medically unlikely edits, the fee schedule and coding rules before it goes out. Spend review time on the claims most likely to fail an audit.</p>
+        <a class="btn btn-accent" href="@Url.Action("Index", "Claims")">Review claims &rarr;</a>
+    </div>
+    <div class="hero-meter">
+        <div class="ring" style="--p: @Model.FlaggedPercent;">
+            <div class="ring-inner">
+                <span class="ring-value">@Model.FlaggedPercent%</span>
+                <span class="ring-label">flagged</span>
+            </div>
+        </div>
+    </div>
+</section>
 
 <div class="tiles">
     <div class="tile">
         <div class="tile-label">Claims</div>
         <div class="tile-value" id="total-claims">@Model.TotalClaims</div>
+        <div class="tile-note">In the audit queue</div>
     </div>
-    <div class="tile">
+    <div class="tile tile-warn">
         <div class="tile-label">Flagged</div>
         <div class="tile-value" id="flagged-claims">@Model.FlaggedClaims</div>
+        <div class="tile-note">At least one rule failed</div>
     </div>
-    <div class="tile">
+    <div class="tile tile-warn">
         <div class="tile-label">Flagged, %</div>
         <div class="tile-value" id="flagged-percent">@Model.FlaggedPercent%</div>
+        <div class="tile-note">Share of all claims</div>
     </div>
     <div class="tile">
         <div class="tile-label">Total billed</div>
         <div class="tile-value" id="total-billed">@Model.TotalBilled.ToString("C")</div>
+        <div class="tile-note">All claims</div>
     </div>
-    <div class="tile">
+    <div class="tile tile-risk">
         <div class="tile-label">Billed on flagged claims</div>
         <div class="tile-value" id="flagged-billed">@Model.FlaggedBilled.ToString("C")</div>
+        <div class="tile-note">Revenue at risk</div>
+    </div>
+</div>
+
+<h2 class="section-title">Audit rules</h2>
+<div class="cards">
+    <div class="card">
+        <div class="card-code">IMPOSSIBLE_UNITS</div>
+        <h3>Medically unlikely units</h3>
+        <p>More units of a CPT code billed for one patient on one day than the medically unlikely edit allows.</p>
+    </div>
+    <div class="card">
+        <div class="card-code">OVERBILLED</div>
+        <h3>Billed above schedule</h3>
+        <p>Billed amount is more than 150% of the fee schedule rate for the code and units.</p>
+    </div>
+    <div class="card">
+        <div class="card-code">UNKNOWN_CODE</div>
+        <h3>Code not in schedule</h3>
+        <p>The CPT code has no fee schedule entry, so the claim cannot be priced or checked.</p>
+    </div>
+    <div class="card">
+        <div class="card-code">FUTURE_DATE</div>
+        <h3>Future service date</h3>
+        <p>The date of service is later than today: the claim was billed before the visit took place.</p>
     </div>
 </div>
