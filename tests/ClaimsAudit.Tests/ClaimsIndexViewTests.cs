@@ -61,6 +61,19 @@ namespace ClaimsAudit.Tests
         }
 
         [Test]
+        public void Filter_is_collapsible()
+        {
+            var view = ReadIndexView();
+
+            Assert.That(view, Does.Contain("<details"),
+                "The filter should be wrapped in a <details> element so it can be collapsed and expanded.");
+            Assert.That(view, Does.Contain("<summary"),
+                "A <summary> gives the clickable control that collapses and expands the filter.");
+            Assert.That(view, Does.Contain("class=\"filters\""),
+                "The From/To filter form should still be present inside the collapsible panel.");
+        }
+
+        [Test]
         public void Reset_control_is_a_button_not_a_link()
         {
             var view = ReadIndexView();
