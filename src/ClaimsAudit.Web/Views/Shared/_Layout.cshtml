@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ViewBag.Title - Claims Audit</title>
+    <link href="~/Content/site.css" rel="stylesheet" />
+</head>
+<body>
+    <div class="nav">
+        <span class="brand">Claims Audit</span>
+        @Html.ActionLink("Dashboard", "Index", "Home")
+        @Html.ActionLink("Claims", "Index", "Claims")
+    </div>
+    <div class="container">
+        @RenderBody()
+    </div>
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    @RenderSection("scripts", required: false)
+</body>
+</html>

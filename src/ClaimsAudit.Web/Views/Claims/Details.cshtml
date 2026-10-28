@@ -1,0 +1,43 @@
+@model ClaimsAudit.Web.Models.Claim
+@{
+    ViewBag.Title = "Claim " + Model.Id;
+    var flags = (List<AuditFlag>)ViewBag.Flags;
+}
+
+<h2>Claim @Model.Id</h2>
+
+<table class="details">
+    <tr><th>Patient</th><td>@Model.PatientId</td></tr>
+    <tr><th>Provider</th><td>@Model.ProviderName</td></tr>
+    <tr><th>Service date</th><td>@Model.ServiceDate.ToString("yyyy-MM-dd")</td></tr>
+    <tr><th>CPT code</th><td>@Model.CptCode</td></tr>
+    <tr><th>Units</th><td>@Model.Units</td></tr>
+    <tr><th>Billed</th><td>@Model.BilledAmount.ToString("C")</td></tr>
+    <tr><th>Status</th><td>@Model.Status</td></tr>
+</table>
+
+<h3>Audit flags</h3>
+@if (flags.Count == 0)
+{
+    <p>No issues found.</p>
+}
+else
+{
+    <ul>
+        @foreach (var f in flags)
+        {
+            <li><span class="flag">@f.Code</span> @f.Message</li>
+        }
+    </ul>
+}
+
+@if (Model.Status != "Reviewed")
+{
+    using (Html.BeginForm("MarkReviewed", "Claims", new { id = Model.Id }, FormMethod.Post))
+    {
+        @Html.AntiForgeryToken()
+        <button type="submit">Mark as reviewed</button>
+    }
+}
+
+<p>@Html.ActionLink("Back to claims", "Index")</p>

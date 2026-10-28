@@ -1,0 +1,29 @@
+@model ClaimsAudit.Web.Models.DashboardStats
+@{
+    ViewBag.Title = "Dashboard";
+}
+
+<h2>Audit dashboard</h2>
+
+<div class="tiles">
+    <div class="tile">
+        <div class="tile-label">Claims</div>
+        <div class="tile-value" id="total-claims">@Model.TotalClaims</div>
+    </div>
+    <div class="tile">
+        <div class="tile-label">Flagged</div>
+        <div class="tile-value" id="flagged-claims">@Model.FlaggedClaims</div>
+    </div>
+    <div class="tile">
+        <div class="tile-label">Flagged, %</div>
+        <div class="tile-value" id="flagged-percent">@Model.FlaggedPercent%</div>
+    </div>
+    <div class="tile">
+        <div class="tile-label">Total billed</div>
+        <div class="tile-value" id="total-billed">@Model.TotalBilled.ToString("C")</div>
+    </div>
+    <div class="tile">
+        <div class="tile-label">Billed on flagged claims</div>
+        <div class="tile-value" id="flagged-billed">@Model.FlaggedBilled.ToString("C")</div>
+    </div>
+</div>

@@ -1,0 +1,10 @@
+bin/
+obj/
+packages/
+publish/
+TestResults/
+.vs/
+*.user
+*.suo
+.claude/settings.local.json
+agent-out/

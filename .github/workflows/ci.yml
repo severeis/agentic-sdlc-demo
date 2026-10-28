@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch to build
+        required: true
+
+permissions:
+  contents: read
+  statuses: write
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ inputs.ref || github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATUS_CONTEXT: ci/build-and-test
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+
+      - name: Mark pending
+        id: sha
+        shell: bash
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$sha" -f state=pending -f context="$STATUS_CONTEXT" \
+            -f description="Build and tests running" -f target_url="$RUN_URL" > /dev/null
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Build and unit tests
+        shell: pwsh
+        run: |
+          ./scripts/test.ps1 *>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Install IIS Express if missing
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "$env:ProgramFiles\IIS Express\iisexpress.exe")) { choco install iisexpress -y --no-progress }
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          ./scripts/smoke.ps1 *>&1 | Tee-Object -FilePath build.log -Append
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            build.log
+            TestResults/
+          if-no-files-found: ignore
+
+      - name: Report status and hand off
+        if: always() && steps.sha.outputs.sha != ''
+        shell: bash
+        env:
+          OUTCOME: ${{ job.status }}
+          BRANCH: ${{ inputs.ref || github.head_ref || github.ref_name }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then
+            state=success; desc="Build, tests and smoke test passed"
+          else
+            state=failure; desc="Build, tests or smoke test failed"
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/${{ steps.sha.outputs.sha }}" -f state=$state -f context="$STATUS_CONTEXT" \
+            -f description="$desc" -f target_url="$RUN_URL" > /dev/null
+
+          # Agent PRs are opened with GITHUB_TOKEN, which does not trigger other workflows,
+          # so the next stage is started explicitly: green -> AI review, red -> agent fix.
+          case "$BRANCH" in
+            agent/*)
+              pr=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+              if [ -n "$pr" ]; then
+                if [ "$state" = "success" ]; then
+                  gh workflow run ai-review.yml -f pr="$pr"
+                else
+                  gh workflow run agent.yml -f pr="$pr" -f reason=ci -f run_id="$GITHUB_RUN_ID"
+                fi
+              fi
+              ;;
+          esac

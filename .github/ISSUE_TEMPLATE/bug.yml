@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in Claims Audit does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem as you see it. You do not need to know the code.
+        A maintainer adds the `agent` label to hand it to the coding agent.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      placeholder: On the Claims page, searching for "mercy" shows nothing.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+      placeholder: Claims from Mercy Family Clinic should be listed, whatever the letter case.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Claims
+        2. Type "mercy" in the search box
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will we know it is fixed?
+      placeholder: |
+        - Search ignores letter case for provider, patient and CPT code
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard
+        - Claims list and search
+        - Claim details
+        - Audit rules
+        - Other

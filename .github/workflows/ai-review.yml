@@ -1,0 +1,122 @@
+name: AI Review
+
+# Second agent: reviews the PR diff and reports ci/ai-review. A blocking review on an
+# agent PR sends it back to the agent for another attempt.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+  actions: write
+
+concurrency:
+  group: review-${{ inputs.pr || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATUS_CONTEXT: ci/ai-review
+      PR: ${{ inputs.pr || github.event.pull_request.number }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Load PR
+        id: pr
+        run: |
+          gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json headRefOid,headRefName,title,body > "$RUNNER_TEMP/pr.json"
+          echo "sha=$(jq -r .headRefOid "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
+          echo "branch=$(jq -r .headRefName "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Mark pending
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/statuses/${{ steps.pr.outputs.sha }}" -f state=pending -f context="$STATUS_CONTEXT" \
+            -f description="AI review running" -f target_url="$RUN_URL" > /dev/null
+
+      - name: Prepare review
+        run: |
+          mkdir -p agent-out
+          # Reviewer instructions always come from main, so a PR cannot rewrite its own review rules.
+          git show origin/main:.github/agent/review.md > agent-out/prompt.md
+          {
+            echo; echo "## Pull request #$PR"; echo
+            jq -r '"### " + .title + "\n\n" + (.body // "")' "$RUNNER_TEMP/pr.json"
+          } >> agent-out/prompt.md
+          gh pr diff "$PR" > agent-out/pr.diff
+          echo "Diff: $(wc -l < agent-out/pr.diff) lines"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ""
+        run: |
+          npm install -g @anthropic-ai/claude-code > /dev/null
+          claude -p \
+            --output-format json \
+            --max-turns 30 \
+            --allowedTools "Read" "Glob" "Grep" "Write" \
+            < agent-out/prompt.md > agent-out/result.json
+
+      - name: Publish review
+        id: verdict
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Reviewer modified repository files:"; git status --porcelain; exit 1
+          fi
+          verdict=$(head -n 1 agent-out/verdict.txt 2>/dev/null | tr -d '\r ' | tr '[:lower:]' '[:upper:]')
+          case "$verdict" in
+            APPROVE|REQUEST_CHANGES) ;;
+            *) echo "No valid verdict from reviewer: '$verdict'"; exit 1 ;;
+          esac
+          cost=$(jq -r '.total_cost_usd // 0 | . * 100 | round / 100' agent-out/result.json)
+          {
+            echo "<!-- ai-review -->"
+            if [ "$verdict" = "APPROVE" ]; then echo "## 🤖 AI review: ✅ approve"; else echo "## 🤖 AI review: ❌ changes requested"; fi
+            echo
+            cat agent-out/review.md
+            echo
+            echo "<sub>[review run]($RUN_URL) · \$$cost · the AI reviewer does not replace human approval</sub>"
+          } > agent-out/comment.md
+          gh pr comment "$PR" --body-file agent-out/comment.md
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+
+      - name: Report status and hand off
+        if: always()
+        env:
+          VERDICT: ${{ steps.verdict.outputs.verdict }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+        run: |
+          case "$VERDICT" in
+            APPROVE) state=success; desc="AI reviewer approved" ;;
+            REQUEST_CHANGES) state=failure; desc="AI reviewer requested changes" ;;
+            *) state=error; desc="AI review did not complete" ;;
+          esac
+          gh api "repos/$GITHUB_REPOSITORY/statuses/${{ steps.pr.outputs.sha }}" -f state=$state -f context="$STATUS_CONTEXT" \
+            -f description="$desc" -f target_url="$RUN_URL" > /dev/null
+          if [ "$VERDICT" = "REQUEST_CHANGES" ]; then
+            case "$BRANCH" in agent/*) gh workflow run agent.yml -f pr="$PR" -f reason=review ;; esac
+          fi

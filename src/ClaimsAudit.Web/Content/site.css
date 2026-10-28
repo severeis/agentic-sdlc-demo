@@ -1,0 +1,16 @@
+body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #222; background: #f6f6f6; }
+.nav { background: #2b4a6f; padding: 10px 20px; }
+.nav a { color: #fff; margin-right: 16px; text-decoration: none; }
+.nav .brand { color: #fff; font-weight: bold; margin-right: 24px; }
+.container { padding: 20px; }
+.tiles { display: flex; flex-wrap: wrap; gap: 12px; }
+.tile { background: #fff; border: 1px solid #ddd; padding: 12px 16px; min-width: 160px; }
+.tile-label { color: #666; font-size: 12px; text-transform: uppercase; }
+.tile-value { font-size: 24px; margin-top: 4px; }
+.filters, .search { margin-bottom: 12px; }
+.search input { width: 320px; padding: 4px; }
+table.grid { border-collapse: collapse; background: #fff; width: 100%; }
+table.grid th, table.grid td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; font-size: 13px; }
+table.grid th { background: #eef2f6; }
+table.details th { text-align: left; padding-right: 16px; }
+.flag { background: #fbe3e3; color: #a12020; padding: 1px 6px; font-size: 11px; margin-right: 4px; }
