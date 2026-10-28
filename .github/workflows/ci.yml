@@ -23,6 +23,8 @@ concurrency:
 
 jobs:
   build-and-test:
+    # Agent branches are built via workflow_dispatch; skip the duplicate pull_request run.
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'agent/')
     runs-on: windows-latest
     timeout-minutes: 30
     env:
