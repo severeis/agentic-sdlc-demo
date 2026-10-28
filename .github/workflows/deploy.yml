@@ -27,7 +27,7 @@ jobs:
       VERSION: 1.0.${{ github.run_number }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: microsoft/setup-msbuild@v2
 
