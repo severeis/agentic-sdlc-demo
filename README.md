@@ -1,3 +1,5 @@
+Video how it works: https://github.com/severeis/agentic-sdlc-demo/blob/main/Demo.mp4
+
 # Agentic SDLC demo: legacy ASP.NET maintenance on autopilot
 
 A working pipeline that maintains a legacy ASP.NET MVC 5 / .NET Framework 4.8 app with AI agents. Someone files an issue, a coding agent opens a pull request, automated checks and an AI reviewer gate it, and a human only approves the merge. Deploy and release happen on their own.
