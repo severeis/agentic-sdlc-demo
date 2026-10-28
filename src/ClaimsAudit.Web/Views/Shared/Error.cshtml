@@ -2,5 +2,8 @@
     ViewBag.Title = "Error";
 }
 
-<h2>Something went wrong.</h2>
-<p>The error has been logged. Please try again.</p>
+<div class="panel error-panel">
+    <h1>Something went wrong.</h1>
+    <p>The error has been logged. Please try again.</p>
+    <a class="btn btn-primary" href="@Url.Action("Index", "Home")">Back to dashboard</a>
+</div>

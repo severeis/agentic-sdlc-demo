@@ -4,40 +4,53 @@
     var flags = (List<AuditFlag>)ViewBag.Flags;
 }
 
-<h2>Claim @Model.Id</h2>
+<div class="breadcrumb">@Html.ActionLink("Claims", "Index") <span>/</span> Claim @Model.Id</div>
 
-<table class="details">
-    <tr><th>Patient</th><td>@Model.PatientId</td></tr>
-    <tr><th>Provider</th><td>@Model.ProviderName</td></tr>
-    <tr><th>Service date</th><td>@Model.ServiceDate.ToString("yyyy-MM-dd")</td></tr>
-    <tr><th>CPT code</th><td>@Model.CptCode</td></tr>
-    <tr><th>Units</th><td>@Model.Units</td></tr>
-    <tr><th>Billed</th><td>@Model.BilledAmount.ToString("C")</td></tr>
-    <tr><th>Status</th><td>@Model.Status</td></tr>
-</table>
-
-<h3>Audit flags</h3>
-@if (flags.Count == 0)
-{
-    <p>No issues found.</p>
-}
-else
-{
-    <ul>
-        @foreach (var f in flags)
-        {
-            <li><span class="flag">@f.Code</span> @f.Message</li>
-        }
-    </ul>
-}
-
-@if (Model.Status != "Reviewed")
-{
-    using (Html.BeginForm("MarkReviewed", "Claims", new { id = Model.Id }, FormMethod.Post))
+<div class="page-head">
+    <div>
+        <h1>Claim @Model.Id <span class="status status-@Model.Status.ToLowerInvariant()">@Model.Status</span></h1>
+        <p class="page-sub">@Model.ProviderName &middot; @Model.ServiceDate.ToString("yyyy-MM-dd")</p>
+    </div>
+    @if (Model.Status != "Reviewed")
     {
-        @Html.AntiForgeryToken()
-        <button type="submit">Mark as reviewed</button>
+        using (Html.BeginForm("MarkReviewed", "Claims", new { id = Model.Id }, FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-primary">Mark as reviewed</button>
+        }
     }
-}
+</div>
 
-<p>@Html.ActionLink("Back to claims", "Index")</p>
+<div class="detail-grid">
+    <div class="panel">
+        <h2 class="panel-title">Claim</h2>
+        <table class="details">
+            <tr><th>Patient</th><td>@Model.PatientId</td></tr>
+            <tr><th>Provider</th><td>@Model.ProviderName</td></tr>
+            <tr><th>Service date</th><td>@Model.ServiceDate.ToString("yyyy-MM-dd")</td></tr>
+            <tr><th>CPT code</th><td><span class="code">@Model.CptCode</span></td></tr>
+            <tr><th>Units</th><td>@Model.Units</td></tr>
+            <tr><th>Billed</th><td>@Model.BilledAmount.ToString("C")</td></tr>
+            <tr><th>Status</th><td>@Model.Status</td></tr>
+        </table>
+    </div>
+
+    <div class="panel">
+        <h2 class="panel-title">Audit flags</h2>
+        @if (flags.Count == 0)
+        {
+            <p class="all-clear">No issues found.</p>
+        }
+        else
+        {
+            <ul class="flag-list">
+                @foreach (var f in flags)
+                {
+                    <li><span class="flag">@f.Code</span> <span>@f.Message</span></li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+
+<p class="back">@Html.ActionLink("Back to claims", "Index")</p>

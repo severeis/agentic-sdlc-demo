@@ -19,55 +19,64 @@
     @Html.ActionLink(label, "Index", new { from = from, to = to, sort = key, dir = nextDir })<text>@Html.Raw(arrow)</text>
 }
 
-<h2>Claims</h2>
-
-<form method="get" action="@Url.Action("Index")" class="filters">
-    <label>From <input type="date" name="from" value="@ViewBag.From" /></label>
-    <label>To <input type="date" name="to" value="@ViewBag.To" /></label>
-    <button type="submit">Filter</button>
-    <button type="button" onclick="location.href='@Url.Action("Index")'">Reset</button>
-</form>
-
-<div class="search">
-    <input type="text" id="claim-search" placeholder="Search provider, patient or CPT code" data-url="@Url.Action("Search")" />
+<div class="page-head">
+    <div>
+        <h1>Claims</h1>
+        <p class="page-sub">@Model.Count claims &middot; click a claim to see its audit flags</p>
+    </div>
 </div>
 
-<table class="grid" id="claims-table">
-    <thead>
-        <tr>
-            <th>@SortHeader("id", "Id", sort, dir, from, to)</th>
-            <th>@SortHeader("date", "Date", sort, dir, from, to)</th>
-            <th>@SortHeader("patient", "Patient", sort, dir, from, to)</th>
-            <th>@SortHeader("provider", "Provider", sort, dir, from, to)</th>
-            <th>@SortHeader("cpt", "CPT", sort, dir, from, to)</th>
-            <th>@SortHeader("units", "Units", sort, dir, from, to)</th>
-            <th>@SortHeader("billed", "Billed", sort, dir, from, to)</th>
-            <th>@SortHeader("status", "Status", sort, dir, from, to)</th>
-            <th>Flags</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var c in Model)
-        {
+<div class="panel toolbar">
+    <form method="get" action="@Url.Action("Index")" class="filters">
+        <label>From <input type="date" name="from" value="@ViewBag.From" /></label>
+        <label>To <input type="date" name="to" value="@ViewBag.To" /></label>
+        <button type="submit" class="btn btn-primary">Filter</button>
+        <button type="button" class="btn btn-ghost" onclick="location.href='@Url.Action("Index")'">Reset</button>
+    </form>
+
+    <div class="search">
+        <input type="text" id="claim-search" placeholder="Search provider, patient or CPT code" data-url="@Url.Action("Search")" />
+    </div>
+</div>
+
+<div class="panel table-wrap">
+    <table class="grid" id="claims-table">
+        <thead>
             <tr>
-                <td>@Html.ActionLink(c.Id.ToString(), "Details", new { id = c.Id })</td>
-                <td>@c.ServiceDate.ToString("yyyy-MM-dd")</td>
-                <td>@c.PatientId</td>
-                <td>@c.ProviderName</td>
-                <td>@c.CptCode</td>
-                <td>@c.Units</td>
-                <td>@c.BilledAmount.ToString("C")</td>
-                <td>@c.Status</td>
-                <td>
-                    @foreach (var f in flags[c.Id])
-                    {
-                        <span class="flag" title="@f.Message">@f.Code</span>
-                    }
-                </td>
+                <th>@SortHeader("id", "Id", sort, dir, from, to)</th>
+                <th>@SortHeader("date", "Date", sort, dir, from, to)</th>
+                <th>@SortHeader("patient", "Patient", sort, dir, from, to)</th>
+                <th>@SortHeader("provider", "Provider", sort, dir, from, to)</th>
+                <th>@SortHeader("cpt", "CPT", sort, dir, from, to)</th>
+                <th class="num">@SortHeader("units", "Units", sort, dir, from, to)</th>
+                <th class="num">@SortHeader("billed", "Billed", sort, dir, from, to)</th>
+                <th>@SortHeader("status", "Status", sort, dir, from, to)</th>
+                <th>Flags</th>
             </tr>
-        }
-    </tbody>
-</table>
+        </thead>
+        <tbody>
+            @foreach (var c in Model)
+            {
+                <tr>
+                    <td>@Html.ActionLink(c.Id.ToString(), "Details", new { id = c.Id }, new { @class = "claim-id" })</td>
+                    <td>@c.ServiceDate.ToString("yyyy-MM-dd")</td>
+                    <td>@c.PatientId</td>
+                    <td>@c.ProviderName</td>
+                    <td><span class="code">@c.CptCode</span></td>
+                    <td class="num">@c.Units</td>
+                    <td class="num">@c.BilledAmount.ToString("C")</td>
+                    <td><span class="status status-@c.Status.ToLowerInvariant()">@c.Status</span></td>
+                    <td>
+                        @foreach (var f in flags[c.Id])
+                        {
+                            <span class="flag" title="@f.Message">@f.Code</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
 
 @section scripts {
     <script src="~/Scripts/claims.js"></script>
