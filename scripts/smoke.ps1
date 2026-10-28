@@ -52,3 +52,4 @@ try {
 
 if ($failed -gt 0) { exit 1 }
 Write-Host "Smoke test passed"
+exit 0
